@@ -1,5 +1,6 @@
 #include "SoftwareSerial.h"
 #include "DFRobotDFPlayerMini.h"
+#include <avr/sleep.h>
 
 //All variables used by SDPlayer module
 SoftwareSerial serialForMP3Player(10, 11); // RX, TX
@@ -8,7 +9,7 @@ const bool gc_resetMP3OnBoot = true;
 const unsigned short gc_MP3Volume = 5; //volume, between 0 and 30
 DFRobotDFPlayerMini myDFPlayer;
 const unsigned short GC_TONE_WAITING    = 1;
-const unsigned short GC_TONE_OCCUPIED   = 2; 
+const unsigned short GC_TONE_OCCUPIED   = 2;
 const unsigned short GC_TONE_SEARCHING  = 3;
 const unsigned short GC_TONE_RINGING    = 4;
 const unsigned short GC_TONE_ERROR      = 5;
@@ -24,7 +25,7 @@ const int INTPUT_PIN_LEG_3 = 4;
 //Depending of rotary sensor, you may adjust the default 66ms value
 const unsigned int pulseInterval = 66 + 20;
 
-//States 
+//States
 const unsigned short STATUS_STARTING     = 0;
 const unsigned short STATUS_COMPOSING    = 1;
 const unsigned short STATUS_CALLING      = 2;
@@ -35,12 +36,11 @@ volatile unsigned long dialTime = 0;
 volatile unsigned long lastDialTime = 0;
 volatile short currentDigitComposed = -1;
 String numberDialed = "";
-volatile bool isHangUp = false;
 volatile bool composingDigit = false;
 
 /**
- * Count number of signal sent by rotary sensor  
- */
+   Count number of signal sent by rotary sensor
+*/
 void rotaryPulseCallback() {
   composingDigit = true;
   dialTime = millis();
@@ -50,23 +50,14 @@ void rotaryPulseCallback() {
   }
 }
 
-/**
- * Function called with hand signal (detect if phone is up or down)
- */
-void hangSignalReceived() {
-  int sensorVal = digitalRead(INTPUT_PIN_HANG_UP);
-  if (sensorVal == HIGH) {
-    isHangUp = false;
-    digitalWrite(LED_BUILTIN, LOW);
-  } else {
-    isHangUp = true;
-    digitalWrite(LED_BUILTIN, HIGH);
-  }
+
+void wakeUp() {
+  digitalWrite(LED_BUILTIN, HIGH);
 }
 
 /**
- * Reset current state (stip playing sound, current number, ...) 
- */
+   Reset current state (stip playing sound, current number, ...)
+*/
 void stopMusicAndClearNumber() {
   myDFPlayer.pause();
   clearNumber();
@@ -83,8 +74,8 @@ void clearComposedDigit() {
 }
 
 /**
- * True if rotary sensor is actually used, false otherwise
- */
+   True if rotary sensor is actually used, false otherwise
+*/
 bool isRotaring() {
   int rotaringPinStatus;
   do {
@@ -93,7 +84,7 @@ bool isRotaring() {
   return rotaringPinStatus == LOW;
 }
 
-bool isPlaying(){
+bool isPlaying() {
   int playingStatus = digitalRead(INTPUT_PIN_PLAYER_BUSY);
   return playingStatus == LOW;
 }
@@ -161,13 +152,11 @@ void setup() {
   serialForMP3Player.begin(9600);
   Serial.begin(115200);
   pinMode(INTPUT_PIN_HANG_UP, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(INTPUT_PIN_HANG_UP), hangSignalReceived, CHANGE);
   pinMode(INTPUT_PIN_LEG_1, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(INTPUT_PIN_LEG_1), rotaryPulseCallback, RISING);
   pinMode(INTPUT_PIN_LEG_3, INPUT_PULLUP);
   pinMode(INTPUT_PIN_PLAYER_BUSY, INPUT_PULLUP);
 
-  hangSignalReceived();
+  attachInterrupt(digitalPinToInterrupt(INTPUT_PIN_LEG_1), rotaryPulseCallback, RISING);
 
   delay(2000); // MP3 player seem to need time to boot.
   // Use softwareSerial to communicate with mp3,
@@ -197,39 +186,52 @@ void loop() {
     printDetail(myDFPlayer.readType(), myDFPlayer.read());
   }
 
-  if (!isHangUp) {
+  int sensorVal = digitalRead(INTPUT_PIN_HANG_UP);
+  if (sensorVal == HIGH) {
+    digitalWrite(LED_BUILTIN, LOW);
     stopMusicAndClearNumber();
-  } else {
-    if (! isRotaring() && composingDigit) {
-      short digit = (currentDigitComposed + 1) % 10;
-      numberDialed += digit;
-      Serial.println(numberDialed);
-      clearComposedDigit();
-      composingDigit = false;
-    }
+    detachInterrupt(digitalPinToInterrupt(INTPUT_PIN_LEG_1));
+    attachInterrupt(digitalPinToInterrupt(INTPUT_PIN_HANG_UP), wakeUp, LOW);
+    delay(100);
 
-    int numberLength = numberDialed.length();
-    if (numberLength < 7 && (currentStatus == STATUS_STARTING
-                            || (currentStatus == STATUS_COMPOSING && !isPlaying())
-                            )) {
-      myDFPlayer.playMp3Folder(GC_TONE_WAITING);
-      currentStatus = STATUS_COMPOSING;
-    } else if (numberLength >= 7 && currentStatus == STATUS_COMPOSING) {
-      currentStatus = STATUS_CALLING;
-      myDFPlayer.playMp3Folder(GC_TONE_SEARCHING);
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+    sleep_enable();
+    sleep_mode();
+    sleep_disable();
+    detachInterrupt(digitalPinToInterrupt(INTPUT_PIN_HANG_UP));
+    attachInterrupt(digitalPinToInterrupt(INTPUT_PIN_LEG_1), rotaryPulseCallback, RISING);
+  }
+
+  if (! isRotaring() && composingDigit) {
+    short digit = (currentDigitComposed + 1) % 10;
+    numberDialed += digit;
+    Serial.println(numberDialed);
+    clearComposedDigit();
+    composingDigit = false;
+  }
+
+  int numberLength = numberDialed.length();
+  if (numberLength < 7 && (currentStatus == STATUS_STARTING
+                           || (currentStatus == STATUS_COMPOSING && !isPlaying())
+                          )) {
+    myDFPlayer.playMp3Folder(GC_TONE_WAITING);
+    currentStatus = STATUS_COMPOSING;
+  } else if (numberLength >= 7 && currentStatus == STATUS_COMPOSING) {
+    currentStatus = STATUS_CALLING;
+    myDFPlayer.playMp3Folder(GC_TONE_SEARCHING);
+    delay(3000);
+    myDFPlayer.playMp3Folder(GC_TONE_RINGING);
+    delay(7000);
+    //If you want to configure number -> song : it's here !!!
+    if (numberDialed.equals("5552333")) {
+      myDFPlayer.playMp3Folder(6);
       delay(3000);
-      myDFPlayer.playMp3Folder(GC_TONE_RINGING);
-      delay(7000);
-      //If you want to configure number -> song : it's here !!!
-      if (numberDialed.equals("5552333")) {
-        myDFPlayer.playMp3Folder(6);
-        delay(3000);
-      } else {
-        myDFPlayer.playMp3Folder(GC_TONE_ERROR);
-        delay(10000);
-      }
+    } else {
+      myDFPlayer.playMp3Folder(GC_TONE_ERROR);
+      delay(10000);
     }
   }
+
 
   delay(300);
 
