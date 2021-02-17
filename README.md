@@ -1,7 +1,8 @@
 ## Many various arduino ideas
 
-Contains various project/sample/example about Arduino 
+Contains various projects/samples/examples about Arduino 
 
-One idea or project per folder.
 
 [Rotary phone : playing a MP3 with specific number](RotaryPhone/readme.md)
+
+[FMTransmitter : emit FM radio waves](FmTransmitterModule/readme.md)
