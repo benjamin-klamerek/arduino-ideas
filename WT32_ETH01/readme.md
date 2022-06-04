@@ -7,8 +7,8 @@ POC about WT32-ETH01
 
 Sum up information about that board.
 
-I took this card because it contains both ethernet and Wi-Fi integrated into the board.
-Remark : we cannot use POE to power up this board.
+I took this card because it contains both ethernet and Wi-Fi directly integrated.
+Remark : we cannot use POE to power this board.
 
 It doesn't have any USB kind port so to upload a program or debug we need to use an intermediate. In my case, it was a USB to TTL adaptor.
 
