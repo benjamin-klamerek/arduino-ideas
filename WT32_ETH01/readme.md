@@ -3,6 +3,9 @@
 ### Project Name
 POC about WT32-ETH01
 
+
+![](WT32%20GPIO.PNG)
+
 ### Description
 
 Sum up information about that board.
